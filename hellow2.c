@@ -126,8 +126,6 @@ char *argv[];
    int rank, size, length;
    char name[BUFSIZ];
 
-
-
    MPI_Init(&argc, &argv);
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
    MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -144,15 +142,30 @@ char *argv[];
    printf("name %s: hello world from process %d of %d\n", name, rank, size);
 
    if(rank == 0) {
-      LabeledPointT labels[20] = {{1, 1} , {2, 2}, {3, 3}, {3, 4}, {1, 5}, {6, 6}, {7, 7}, {8, 8}, {11, 9}, {9, 10}, {10, 11}, {12, 12}, {14, 13}, {15, 14}, {17, 15}, {16, 16}, {17, 17}, {18, 18}, {19, 19}, {20, 20}};
+      LabeledPointT labels[21] = {{1, 1} , {2, 2}, {3, 3}, {3, 4}, {1, 5}, {6, 6}, {7, 7}, {8, 8}, {11, 9}, {9, 10}, {10, 11}, {12, 12}, {14, 13}, {15, 14}, {17, 15}, {16, 16}, {17, 17}, {18, 18}, {19, 19}, {20, 20}, {21, 21}};
 
       int destination;
       int partition = 0;
 
+      //distribute to workers
       for(destination = 1; destination < size; destination++) {
-        MPI_Send(labels + partition , 5, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
-        partition += 5;
+        MPI_Send(labels + partition, 7, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
+        partition += 7;
       }
+
+      MPI_Status status;
+      LabeledPointT result[20];
+      partition = 0;
+      for(destination = 1; destination < size; destination++) {
+         MPI_Recv(result + partition, INT_MAX, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+         partition += 7;
+      }
+
+      printArray(result, 20);
+      LabeledPointT *finalResult = pava(result, 20);
+
+      printArray(finalResult, 20);
+
    } else {
       MPI_Status status;
       int count;
@@ -165,15 +178,14 @@ char *argv[];
       
       //printArray(work, 5);
 
-      LabeledPointT *result = pava(work, 5);
-      printArray(result, 5);      
+      LabeledPointT *result = pava(work, 7);
+
+      MPI_Send(result, 7, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
       //LabeledPointT *newlabels;
      
       //newlabels = pava(labels, 20);
      // printArray(newlabels, 20);
    }
-   
-   
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
