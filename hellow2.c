@@ -22,19 +22,29 @@ void printArray(LabeledPointT *input, int length) {
    printf("\r\n-------------------------\r\n");
 }
 
-int sum(LabeledPointT *input, int start, int end) {
-   int sum = 0;
+double weightedLabelSum(LabeledPointT *input, int start, int end) {
+   double sum = 0;
 
    for(; start <= end; start++) {
-      sum += input[start].label;
+      sum += input[start].label * input[start].weight;
    }  
 
    return sum;
 }
 
+double weightSum(LabeledPointT *input, int start, int end) {
+  double sum = 0;
+
+   for(; start <= end; start++) {
+      sum += input[start].weight;
+   }  
+
+   return sum; 
+}
+
 void pool(LabeledPointT *input, int start, int end) {
-   double weightedSum = sum(input, start, end);
-   double weight = end - start + 1;
+   double weightedSum = weightedLabelSum(input, start, end);
+   double weight = weightSum(input, start, end);
 
    for(; start <= end; start++) {
       input[start].label = weightedSum / weight;
