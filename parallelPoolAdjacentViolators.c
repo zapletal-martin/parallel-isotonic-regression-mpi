@@ -12,6 +12,10 @@ typedef struct LabeledPoint
    double weight;
 } LabeledPointT; 
 
+typedef int bool;
+#define true 1
+#define false 0
+
 void printArray(LabeledPointT *input, int length) {
    printf("\r\n-------------------------\r\n");
    
@@ -51,8 +55,9 @@ void pool(LabeledPointT *input, int start, int end) {
    }
 }
 
-LabeledPointT *poolAdjacentViolators(LabeledPointT *input, int length) {
+bool poolAdjacentViolators(LabeledPointT *input, int length) {
    int i = 0;
+   bool pooled = false;
 
    while(i < length) {
       int j = i;
@@ -69,6 +74,7 @@ LabeledPointT *poolAdjacentViolators(LabeledPointT *input, int length) {
         //otherwise pool the violating sequence
         //and check if pooling caused monotonicity violation in previously processed points
         while (i >= 0 && !(input[i].label <= input[i + 1].label)) {
+          pooled = true;
           pool(input, i, j);
           i = i - 1;
         }
@@ -77,7 +83,7 @@ LabeledPointT *poolAdjacentViolators(LabeledPointT *input, int length) {
       }
    }
   
-   return input;
+   return pooled;
 }
 
 MPI_Datatype MPI_Init_Type_LabeledPoint () {
@@ -114,32 +120,52 @@ MPI_Datatype MPI_Init_Type_LabeledPoint () {
   return mpi_LabeledPoint_type;
 }
 
-void master(MPI_Datatype MPI_LabeledPoint, int size) {
-  LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
+int isMaster(int rank) {
+  return rank == 0;
+} 
 
+int availablePartitions(int numberOfProcesses) {
+  return numberOfProcesses - 1;
+}
+
+void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, int labelsSize) {
   int destination;
   int partition = 0;
+  int partitionSize = labelsSize / availablePartitions(numberOfProcesses);
   
   //distribute to workers
-  for(destination = 1; destination < size; destination++) {
-    MPI_Send(labels + partition, 7, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
-    partition += 7;
+  for(destination = 1; destination < numberOfProcesses; destination++) {
+    MPI_Send(labels + partition, partitionSize, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
+    partition += partitionSize;
   }
-  
+}
+
+void masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, int labelsSize) {
   MPI_Status status;
-  LabeledPointT result[21];
+  LabeledPointT result[labelsSize];
   int count;
-  partition = 0;
-  for(destination = 1; destination < size; destination++) {
+  int destination;
+  int partition = 0;
+  bool pooled = false;
+
+  for(destination = 1; destination < numberOfProcesses; destination++) {
      MPI_Recv(result + partition, MAX_PARTITION_SIZE, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
      MPI_Get_count(&status, MPI_LabeledPoint, &count);
+
+  //   MPI_Recv(&pooled, 1, MPI_INT, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
      //printf("RECEIVED COUNT %d\n", count);
      partition += count;
   }
 
-  LabeledPointT *finalResult = poolAdjacentViolators(result, 21);
+  printf("%s\n", pooled);
+  pooled = poolAdjacentViolators(result, labelsSize);
 
-  printArray(finalResult, 21);
+  printArray(result, labelsSize);
+}
+
+void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, int labelsSize) {
+  masterSend(MPI_LabeledPoint, numberOfProcesses, labels, labelsSize);
+  masterReceive(MPI_LabeledPoint, numberOfProcesses, labels, labelsSize);
 }
 
 void partition(MPI_Datatype MPI_LabeledPoint) {
@@ -152,38 +178,44 @@ void partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Recv(buffer, MAX_PARTITION_SIZE, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
   MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
-  LabeledPointT *result = poolAdjacentViolators(buffer, count);
+  bool pooled = poolAdjacentViolators(buffer, count);
 
-  MPI_Send(result, count, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
+  MPI_Send(buffer, count, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
+  //MPI_Send(&pooled, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+}
+
+void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank) {
+  LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
+
+  if(isMaster(rank)) {
+      master(MPI_LabeledPoint, numberOfProcesses, labels, 21);
+   } else {
+      partition(MPI_LabeledPoint);
+   }
 }
 
 int main(argc, argv)
 int argc;
 char *argv[];
 {
-   int rank, size, length;
+   int rank, numberOfProcesses, length;
    char name[BUFSIZ];
 
    MPI_Init(&argc, &argv);
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-   MPI_Comm_size(MPI_COMM_WORLD, &size);
+   MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcesses);
    MPI_Get_processor_name(name, &length);
 
-   if (size < 2) {
+   if (numberOfProcesses < 2) {
       //TODO SIMPLE PAVA
       fprintf(stderr,"Requires at least two processes.\n");
       exit(-1);
    }
 
    MPI_Datatype MPI_LabeledPoint = MPI_Init_Type_LabeledPoint();
+   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank);
 
-   printf("name %s: hello world from process %d of %d\n", name, rank, size);
-
-   if(rank == 0) {
-      master(MPI_LabeledPoint, size);
-   } else {
-      partition(MPI_LabeledPoint);
-   }
+   printf("name %s: hello world from process %d of %d\n", name, rank, numberOfProcesses);
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
