@@ -1,6 +1,7 @@
 #include <stdio.h>  /* printf and BUFSIZ defined there */
 #include <stdlib.h> /* exit defined there */
 #include <limits.h>
+#include <string.h>
 #include <mpi.h>    /* all MPI-2 functions defined there */
 
 #define MAX_PARTITION_SIZE 1048576
@@ -128,6 +129,55 @@ int availablePartitions(int numberOfProcesses) {
   return numberOfProcesses - 1;
 }
 
+long countLines(char *fileName) {
+  FILE *ptr_readfile;
+  char line [128]; /* or some other suitable maximum line size */
+  long lines = 0;
+  char ch;
+
+  ptr_readfile = fopen(fileName,"r");
+
+  while (fgets(line, sizeof line, ptr_readfile) != NULL) {
+    ++lines;
+  }
+
+  return lines;
+}
+
+LabeledPointT parseLine(char *line) {
+  char* token;
+  LabeledPointT label;
+
+  token = strtok(line, " ,\t\n");
+  sscanf(token, "%lf", &label.label);
+
+  token = strtok(NULL, " ,\t\n");
+  sscanf(token, "%lf", &label.feature);
+
+  token = strtok(NULL, " ,\t\n");
+  sscanf(token, "%lf", &label.weight);
+
+  //label = (LabeledPointT *)malloc(1 * sizeof(LabeledPointT));
+
+  return label;
+}
+
+LabeledPointT *readFile(char *fileName) {
+  FILE *ptr_readfile;
+  char line [128]; /* or some other suitable maximum line size */
+  LabeledPointT *labels = malloc(countLines(fileName) * sizeof(LabeledPointT));
+  int i = 0;
+
+  ptr_readfile = fopen(fileName,"r");
+
+  while (fgets(line, sizeof line, ptr_readfile) != NULL) {
+    labels[i] = parseLine(line);
+    i++;
+  }
+
+  return labels;
+}
+
 void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, int partitionSize) {
   int destination;
   int partition = 0;
@@ -174,12 +224,15 @@ void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT 
   printArray(labels, labelsSize);
 }
 
-void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, int labelsSize) {
+void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFileName) {
   bool pooled = true; 
+
+  long labelsSize = countLines(inputFileName);
 
   int numberOfPartitions = availablePartitions(numberOfProcesses);
   int partitionSize = labelsSize / availablePartitions(numberOfProcesses);
 
+  LabeledPointT *labels = readFile(inputFileName);
   LabeledPointT *iterator = labels;
 
   while(pooled == true) {
@@ -221,9 +274,9 @@ void iteraivePartition(MPI_Datatype MPI_LabeledPoint) {
   }
 }
 
-void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, LabeledPointT *labels) {
+void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, char *inputFileName) {
   if(isMaster(rank)) {
-    iterativeMaster(MPI_LabeledPoint, numberOfProcesses, labels, 21);
+    iterativeMaster(MPI_LabeledPoint, numberOfProcesses, inputFileName);
     MPI_Abort(MPI_COMM_WORLD, 1);
   } else {
     iteraivePartition(MPI_LabeledPoint);
@@ -250,16 +303,21 @@ char *argv[];
    MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcesses);
    MPI_Get_processor_name(name, &length);
 
+   if (argc < 1) {
+      fprintf(stderr,"Requires filename argument.\n");
+      exit(-1);
+   }
+
    if (numberOfProcesses < 2) {
       //TODO SIMPLE PAVA
       fprintf(stderr,"Requires at least two processes.\n");
       exit(-1);
    }
 
-   LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
+   //LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
    MPI_Datatype MPI_LabeledPoint = MPI_Init_Type_LabeledPoint();
 
-   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, labels);
+   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1]);
 
    printf("name %s: hello world from process %d of %d\n", name, rank, numberOfProcesses);
 
