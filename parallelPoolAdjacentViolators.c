@@ -269,16 +269,12 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
     } else {
       iterator -= partitionSize / 2;
       numberOfPartitions += 1;
-    }
-
-    if(i == 3) {
-      MPI_Abort(MPI_COMM_WORLD, 1);
     } 
 
     i++;
   }
 
-  writeFile(outputFileName, labels, countLines(inputFileName));
+  writeFile(outputFileName, labels, countLines(inputFileName));  
   MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
