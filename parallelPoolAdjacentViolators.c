@@ -2,6 +2,7 @@
 #include <stdlib.h> /* exit defined there */
 #include <limits.h>
 #include <string.h>
+#include <math.h>
 #include <mpi.h>    /* all MPI-2 functions defined there */
 
 #define MAX_PARTITION_SIZE 1048576
@@ -56,6 +57,10 @@ void pool(LabeledPointT *input, int start, int end) {
    }
 }
 
+bool lessEqualTo(double a, double b) {
+    return a < b || fabs(a - b) < 0.001;
+}
+
 bool poolAdjacentViolators(LabeledPointT *input, int length) {
    int i = 0;
    bool pooled = false;
@@ -64,7 +69,7 @@ bool poolAdjacentViolators(LabeledPointT *input, int length) {
       int j = i;
 
       //find monotonicity violating sequence, if any
-      while(j < length - 1 && !(input[j].label <= input[j + 1].label)) {
+      while(j < length - 1 && !(lessEqualTo(input[j].label, input[j + 1].label))) {
         j = j + 1;
       }
 
@@ -74,7 +79,7 @@ bool poolAdjacentViolators(LabeledPointT *input, int length) {
       } else {
         //otherwise pool the violating sequence
         //and check if pooling caused monotonicity violation in previously processed points
-        while (i >= 0 && !(input[i].label <= input[i + 1].label)) {
+        while (i >= 0 && !(lessEqualTo(input[i].label, input[i + 1].label))) {
           pooled = true;
           pool(input, i, j);
           i = i - 1;
@@ -194,18 +199,19 @@ void writeFile(char *fileName, LabeledPointT *labels, int size) {
   fclose(fOut);
 }
 
-void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, int partitionSize) {
+void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, long partitionSize) {
   int destination;
   int partition = 0;
   
-  //distribute to workers
+  //distribute to workers 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
+    MPI_Send(&partitionSize, 1, MPI_LONG, destination, 1, MPI_COMM_WORLD);
     MPI_Send(labels + partition, partitionSize, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
     partition += partitionSize;
   }
 }
 
-bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, int partitionSize) {
+bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, long partitionSize) {
   MPI_Status status;
   int count;
   int destination;
@@ -215,7 +221,8 @@ bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, Labele
   bool pooledReturn = false;
 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
-    MPI_Recv(labels + partition, MAX_PARTITION_SIZE, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+    MPI_Recv(labels + partition, partitionSize, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
     MPI_Recv(pooled, 1, MPI_INT, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
@@ -230,8 +237,8 @@ bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, Labele
   return pooledReturn;
 }
 
-void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, int labelsSize) {
-  int partitionSize = labelsSize / availablePartitions(numberOfProcesses);
+void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, long labelsSize) {
+  long partitionSize = labelsSize / availablePartitions(numberOfProcesses);
 
   masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
   masterReceive(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
@@ -242,11 +249,12 @@ void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT 
 
 void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFileName, char* outputFileName) {
   bool pooled = true; 
+  int i = 0;
 
   long labelsSize = countLines(inputFileName);
 
   int numberOfPartitions = availablePartitions(numberOfProcesses);
-  int partitionSize = labelsSize / availablePartitions(numberOfProcesses);
+  long partitionSize = labelsSize / numberOfPartitions;
 
   LabeledPointT *labels = readFile(inputFileName);
   LabeledPointT *iterator = labels;
@@ -262,21 +270,27 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
       iterator -= partitionSize / 2;
       numberOfPartitions += 1;
     }
+
+    if(i == 3) {
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    } 
+
+    i++;
   }
 
-  writeFile(outputFileName, labels, 21);
+  writeFile(outputFileName, labels, countLines(inputFileName));
+  MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
 void partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Status status;
-  int count;
+  long count;
 
-  LabeledPointT *buffer = malloc(MAX_PARTITION_SIZE * sizeof(LabeledPointT));
+  MPI_Recv(&count, 1, MPI_LONG, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-  MPI_Recv(buffer, MAX_PARTITION_SIZE, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-  MPI_Get_count(&status, MPI_LabeledPoint, &count);
-
-  printArray(buffer, 7);
+  LabeledPointT *buffer = malloc(count * sizeof(LabeledPointT));
+  MPI_Recv(buffer, count, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+  //MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
   bool pooled = poolAdjacentViolators(buffer, count);
 
@@ -293,7 +307,6 @@ void iteraivePartition(MPI_Datatype MPI_LabeledPoint) {
 void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, char *inputFileName, char *outputFileName) {
   if(isMaster(rank)) {
     iterativeMaster(MPI_LabeledPoint, numberOfProcesses, inputFileName, outputFileName);
-    MPI_Abort(MPI_COMM_WORLD, 1);
   } else {
     iteraivePartition(MPI_LabeledPoint);
   }
@@ -334,8 +347,6 @@ char *argv[];
    MPI_Datatype MPI_LabeledPoint = MPI_Init_Type_LabeledPoint();
 
    iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
-
-   printf("name %s: hello world from process %d of %d\n", name, rank, numberOfProcesses);
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
