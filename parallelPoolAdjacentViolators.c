@@ -237,7 +237,10 @@ bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, Labele
   return pooledReturn;
 }
 
-void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT *labels, long labelsSize) {
+void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFileName, char* outputFileName) {
+  LabeledPointT *labels = readFile(inputFileName);
+  long labelsSize = countLines(inputFileName);
+
   long partitionSize = labelsSize / availablePartitions(numberOfProcesses);
 
   masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
@@ -248,15 +251,14 @@ void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, LabeledPointT 
 }
 
 void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFileName, char* outputFileName) {
+  LabeledPointT *labels = readFile(inputFileName);
+  long labelsSize = countLines(inputFileName);
   bool pooled = true; 
   int i = 0;
-
-  long labelsSize = countLines(inputFileName);
 
   int numberOfPartitions = availablePartitions(numberOfProcesses);
   long partitionSize = labelsSize / numberOfPartitions;
 
-  LabeledPointT *labels = readFile(inputFileName);
   LabeledPointT *iterator = labels;
 
   while(pooled == true) {
@@ -285,6 +287,7 @@ void partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Recv(&count, 1, MPI_LONG, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
   LabeledPointT *buffer = malloc(count * sizeof(LabeledPointT));
+
   MPI_Recv(buffer, count, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
   //MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
@@ -308,9 +311,9 @@ void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int n
   }
 }
 
-void parallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, LabeledPointT *labels) {
+void parallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, char *inputFileName, char *outputFileName) {
   if(isMaster(rank)) {
-    master(MPI_LabeledPoint, numberOfProcesses, labels, 21);
+    master(MPI_LabeledPoint, numberOfProcesses, inputFileName, outputFileName);
   } else {
     partition(MPI_LabeledPoint);
   }
@@ -342,7 +345,7 @@ char *argv[];
    //LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
    MPI_Datatype MPI_LabeledPoint = MPI_Init_Type_LabeledPoint();
 
-   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
+   parallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
