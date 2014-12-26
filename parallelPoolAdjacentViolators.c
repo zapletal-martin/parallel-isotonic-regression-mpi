@@ -81,6 +81,8 @@ bool poolAdjacentViolators(LabeledPointT *input, int length) {
         //and check if pooling caused monotonicity violation in previously processed points
         while (i >= 0 && !(lessEqualTo(input[i].label, input[i + 1].label))) {
           pooled = true;
+
+          printf("Pooling %f and %f \n", input[i].label, input[j].label);
           pool(input, i, j);
           i = i - 1;
         }
@@ -247,7 +249,8 @@ void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFil
   masterReceive(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
 
   poolAdjacentViolators(labels, labelsSize);
-  printArray(labels, labelsSize);
+  
+  writeFile(outputFileName, labels, countLines(inputFileName));  
 }
 
 void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFileName, char* outputFileName) {
