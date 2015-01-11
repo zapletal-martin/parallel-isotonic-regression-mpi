@@ -305,11 +305,49 @@ void iteraivePartition(MPI_Datatype MPI_LabeledPoint) {
 }
 
 void iterativeParallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, char *inputFileName, char *outputFileName) {
+  bool pooled = true;
+
+  LabeledPointT *labels;
+
   if(isMaster(rank)) {
+    labels = readFile(inputFileName);
+  }
+  
+  long labelsSize = countLines(inputFileName);
+  long partitionSize = labelsSize / numberOfProcesses;
+  int pooling[numberOfProcesses];
+
+  LabeledPointT *localLabels = malloc(partitionSize * sizeof(LabeledPointT));
+  bool localPooled = true;
+
+  while(pooled == true) {
+    pooled = false;
+
+    MPI_Scatter(labels, partitionSize, MPI_LabeledPoint, &localLabels, partitionSize, MPI_LabeledPoint, 0, MPI_COMM_WORLD);
+    MPI_Scatter(pooling, 1, MPI_INT, &localPooled, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    localPooled = poolAdjacentViolators(localLabels, partitionSize);
+
+    MPI_Gather(&localLabels, partitionSize, MPI_LabeledPoint, labels, partitionSize, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(&localPooled, 1, MPI_INT, pooling, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if(isMaster(rank)) {
+      int i = 0;
+      for(i = 0; i < numberOfProcesses; i++) {
+        if(pooling[i] == true) {
+          pooled = true;
+        }
+      }
+    }
+  }
+  
+  writeFile(outputFileName, labels, labelsSize);  
+  
+  /*if(isMaster(rank)) {
     iterativeMaster(MPI_LabeledPoint, numberOfProcesses, inputFileName, outputFileName);
   } else {
     iteraivePartition(MPI_LabeledPoint);
-  }
+  }*/
 }
 
 void parallelPoolAdjacentViolators(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, int rank, char *inputFileName, char *outputFileName) {
