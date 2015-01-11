@@ -21,24 +21,50 @@ char *argv[];
   fclose(fOut);
 }
 
-double rand_float( double low, double high ) {
-  return ( ( double )rand() * ( high - low ) ) / ( double )RAND_MAX + low;
+long countLines(char *fileName) {
+  FILE *ptr_readfile;
+  char line [128]; /* or some other suitable maximum line size */
+  long lines = 0;
+  char ch;
+
+  ptr_readfile = fopen(fileName,"r");
+
+  while (fgets(line, sizeof line, ptr_readfile) != NULL) {
+    ++lines;
+  }
+
+  return lines;
 }
 
 int main(argc, argv)
 int argc;
 char *argv[];
 {
-  
   srand(1);
   FILE *fOut;
-  fOut = fopen("dataNormal.csv", "w");
-  char line[128];
-  long i;
+  FILE *fIn;
 
-  for (i = 0; i < 9999L; i++) {
-    snprintf(line, 128, "%lu,%lu,%lu\r\n", rand(), i, 1);    
-    fputs(line, fOut);
+  fOut = fopen("NASDAQ_OUT.csv", "w");
+
+  char line[128];
+  double i = 1;
+
+  double val;
+  long counter = 0;
+
+  for (i = 1; i < 350; i += 0.1) {
+  	fIn = fopen("NASDAQ.csv", "r");
+
+  	while (fgets(line, sizeof line, fIn) != NULL && counter <= 10000000L) {
+      sscanf(line, "%lf", &val);
+
+      snprintf(line, 128, "%lf,%lf,%lf\r\n", val * i, 1.0, 1.0);    
+      fputs(line, fOut);
+
+      counter++;
+  	}
+
+  	fclose(fIn);
   }
 
   fclose(fOut);
