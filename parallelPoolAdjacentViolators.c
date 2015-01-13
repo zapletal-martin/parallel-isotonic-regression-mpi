@@ -199,15 +199,19 @@ void writeFile(char *fileName, LabeledPointT *labels, int size) {
   fclose(fOut);
 }
 
-void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, long partitionSize) {
+void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPointT *labels, long partitionSize, bool terminate) {
   int destination;
   int partition = 0;
-  
   //distribute to workers 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
-    MPI_Send(&partitionSize, 1, MPI_LONG, destination, 1, MPI_COMM_WORLD);
-    MPI_Send(labels + partition, partitionSize, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
-    partition += partitionSize;
+
+    MPI_Send(&terminate, 1, MPI_INT, destination, 1, MPI_COMM_WORLD);
+
+    if(terminate == false) {
+      MPI_Send(&partitionSize, 1, MPI_LONG, destination, 1, MPI_COMM_WORLD);
+      MPI_Send(labels + partition, partitionSize, MPI_LabeledPoint, destination, 1, MPI_COMM_WORLD);
+      partition += partitionSize;
+    }
   }
 }
 
@@ -222,6 +226,7 @@ bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, Labele
 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
 
+printf("RECEIVING\n");
     MPI_Recv(labels + partition, partitionSize, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
@@ -243,7 +248,7 @@ void master(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char* inputFil
 
   long partitionSize = labelsSize / availablePartitions(numberOfProcesses);
 
-  masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
+  masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize, false);
   masterReceive(MPI_LabeledPoint, availablePartitions(numberOfProcesses), labels, partitionSize);
 
   poolAdjacentViolators(labels, labelsSize);
@@ -263,7 +268,7 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
   LabeledPointT *iterator = labels;
 
   while(pooled == true) {
-    masterSend(MPI_LabeledPoint, numberOfPartitions, iterator, partitionSize);
+    masterSend(MPI_LabeledPoint, numberOfPartitions, iterator, partitionSize, false);
     pooled = masterReceive(MPI_LabeledPoint, numberOfPartitions, iterator, partitionSize);
 
     if(iterator == labels) {
@@ -277,25 +282,34 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
     i++;
   }
 
-  writeFile(outputFileName, labels, countLines(inputFileName));  
-  MPI_Abort(MPI_COMM_WORLD, 1);
+  writeFile(outputFileName, labels, countLines(inputFileName));
+  masterSend(MPI_LabeledPoint, numberOfPartitions, iterator, partitionSize, true);
+  //MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
 void partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Status status;
   long count;
+  int terminate = false;
 
-  MPI_Recv(&count, 1, MPI_LONG, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+  MPI_Recv(&terminate, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-  LabeledPointT *buffer = malloc(count * sizeof(LabeledPointT));
+  if(terminate == true) {
+    MPI_Type_free(&MPI_LabeledPoint);
+    MPI_Finalize();
+  } else {
+    MPI_Recv(&count, 1, MPI_LONG, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-  MPI_Recv(buffer, count, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-  //MPI_Get_count(&status, MPI_LabeledPoint, &count);
+    LabeledPointT *buffer = malloc(count * sizeof(LabeledPointT));
 
-  bool pooled = poolAdjacentViolators(buffer, count);
+    MPI_Recv(buffer, count, MPI_LabeledPoint, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    //MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
-  MPI_Send(buffer, count, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
-  MPI_Send(&pooled, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+    bool pooled = poolAdjacentViolators(buffer, count);
+
+    MPI_Send(buffer, count, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
+    MPI_Send(&pooled, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+  }
 }
 
 void iteraivePartition(MPI_Datatype MPI_LabeledPoint) {

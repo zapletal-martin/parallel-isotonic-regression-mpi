@@ -2,9 +2,8 @@
 #include <stdlib.h> /* exit defined there */
 #include <limits.h>
 #include <string.h>
-#include <mpi.h>    /* all MPI-2 functions defined there */
 
-int main2(argc, argv)
+int main(argc, argv)
 int argc;
 char *argv[];
 {
@@ -36,15 +35,14 @@ long countLines(char *fileName) {
   return lines;
 }
 
-int main(argc, argv)
+int main2(argc, argv)
 int argc;
 char *argv[];
 {
-  srand(1);
   FILE *fOut;
   FILE *fIn;
 
-  fOut = fopen("NASDAQ_OUT.csv", "w");
+  fOut = fopen("data/NASDAQ_OUT.csv", "w");
 
   char line[128];
   double i = 1;
@@ -53,7 +51,7 @@ char *argv[];
   long counter = 0;
 
   for (i = 1; i < 350; i += 0.1) {
-  	fIn = fopen("NASDAQ.csv", "r");
+  	fIn = fopen("data/NASDAQ.csv", "r");
 
   	while (fgets(line, sizeof line, fIn) != NULL && counter <= 10000000L) {
       sscanf(line, "%lf", &val);
