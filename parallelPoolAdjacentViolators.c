@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <mpi.h>    /* all MPI-2 functions defined there */
+#include <time.h>
 
 #define MAX_PARTITION_SIZE 1048576
 
@@ -204,7 +205,6 @@ void masterSend(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, LabeledPo
   int partition = 0;
   //distribute to workers 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
-
     MPI_Send(&terminate, 1, MPI_INT, destination, 1, MPI_COMM_WORLD);
 
     if(terminate == false) {
@@ -225,8 +225,6 @@ bool masterReceive(MPI_Datatype MPI_LabeledPoint, int numberOfPartitions, Labele
   bool pooledReturn = false;
 
   for(destination = 1; destination <= numberOfPartitions; destination++) {
-
-printf("RECEIVING\n");
     MPI_Recv(labels + partition, partitionSize, MPI_LabeledPoint, destination, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     MPI_Get_count(&status, MPI_LabeledPoint, &count);
 
@@ -283,11 +281,11 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
   }
 
   writeFile(outputFileName, labels, countLines(inputFileName));
-  masterSend(MPI_LabeledPoint, numberOfPartitions, iterator, partitionSize, true);
+  masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), iterator, partitionSize, true);
   //MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
-void partition(MPI_Datatype MPI_LabeledPoint) {
+bool partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Status status;
   long count;
   int terminate = false;
@@ -295,8 +293,7 @@ void partition(MPI_Datatype MPI_LabeledPoint) {
   MPI_Recv(&terminate, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
   if(terminate == true) {
-    MPI_Type_free(&MPI_LabeledPoint);
-    MPI_Finalize();
+    return true;
   } else {
     MPI_Recv(&count, 1, MPI_LONG, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
@@ -309,12 +306,15 @@ void partition(MPI_Datatype MPI_LabeledPoint) {
 
     MPI_Send(buffer, count, MPI_LabeledPoint, 0, 1, MPI_COMM_WORLD);
     MPI_Send(&pooled, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+    return false;
   }
 }
 
 void iteraivePartition(MPI_Datatype MPI_LabeledPoint) {
-  while(true) {
-    partition(MPI_LabeledPoint);
+  bool terminate = false;
+  
+  while(terminate == false) {
+    terminate = partition(MPI_LabeledPoint);
   }
 }
 
@@ -360,7 +360,14 @@ char *argv[];
    //LabeledPointT labels[21] = {{1, 1, 1} , {2, 2, 1}, {3, 3, 1}, {3, 4, 1}, {1, 5, 1}, {6, 6, 1}, {7, 7, 1}, {8, 8, 1}, {11, 9, 1}, {9, 10, 1}, {10, 11, 1}, {12, 12, 1}, {14, 13, 1}, {15, 14, 1}, {17, 15, 1}, {16, 16, 1}, {17, 17, 1}, {18, 18, 1}, {19, 19, 1}, {20, 20, 1}, {21, 21, 1}};
    MPI_Datatype MPI_LabeledPoint = MPI_Init_Type_LabeledPoint();
 
-   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
+   clock_t begin, end;
+   double time_spent;
+   begin = clock();
+
+   parallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
+
+   end = clock();
+   printf("TIME SPENT: %f\n", (double)(end - begin) / CLOCKS_PER_SEC);
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
