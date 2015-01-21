@@ -3,16 +3,16 @@
 #include <limits.h>
 #include <string.h>
 
-int main(argc, argv)
+int main2(argc, argv)
 int argc;
 char *argv[];
 {
   FILE *fOut;
-  fOut = fopen("data2.csv", "w");
+  fOut = fopen("DATA_OPOORDERED.csv", "w");
   char line[128];
   long i;
 
-  for (i = 9999L; i > 0; i--) {
+  for (i = 1000001L; i > 0L; i--) {
     snprintf(line, 128, "%lu,%lu,%lu\r\n", i, i, 1);    
     fputs(line, fOut);
   }
@@ -35,14 +35,14 @@ long countLines(char *fileName) {
   return lines;
 }
 
-int main2(argc, argv)
+int main(argc, argv)
 int argc;
 char *argv[];
 {
   FILE *fOut;
   FILE *fIn;
 
-  fOut = fopen("data/NASDAQ_OUT.csv", "w");
+  fOut = fopen("NASDAQ_REAL.csv", "w");
 
   char line[128];
   double i = 1;
@@ -50,13 +50,13 @@ char *argv[];
   double val;
   long counter = 0;
 
-  for (i = 1; i < 350; i += 0.1) {
+  for (i = 1; i < 700.0; i += 0.1) {
   	fIn = fopen("data/NASDAQ.csv", "r");
 
-  	while (fgets(line, sizeof line, fIn) != NULL && counter <= 10000000L) {
+  	while (fgets(line, sizeof line, fIn) != NULL && counter <= 19999600L) {
       sscanf(line, "%lf", &val);
 
-      snprintf(line, 128, "%lf,%lf,%lf\r\n", val * i, 1.0, 1.0);    
+      snprintf(line, 128, "%lf,%lu,%lf\r\n", val * i, counter, 1.0);    
       fputs(line, fOut);
 
       counter++;
