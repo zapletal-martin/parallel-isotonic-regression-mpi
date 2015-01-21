@@ -280,8 +280,8 @@ void iterativeMaster(MPI_Datatype MPI_LabeledPoint, int numberOfProcesses, char*
     i++;
   }
 
-  writeFile(outputFileName, labels, countLines(inputFileName));
   masterSend(MPI_LabeledPoint, availablePartitions(numberOfProcesses), iterator, partitionSize, true);
+  writeFile(outputFileName, labels, countLines(inputFileName));
   //MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
@@ -364,10 +364,10 @@ char *argv[];
    double time_spent;
    begin = clock();
 
-   parallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
+   iterativeParallelPoolAdjacentViolators(MPI_LabeledPoint, numberOfProcesses, rank, argv[1], argv[2]);
 
    end = clock();
-   printf("TIME SPENT: %f\n", (double)(end - begin) / CLOCKS_PER_SEC);
+   printf("PROCESS %d TIME SPENT: %f\n", rank, (double)(end - begin) / CLOCKS_PER_SEC);
 
    MPI_Type_free(&MPI_LabeledPoint);
    MPI_Finalize();
